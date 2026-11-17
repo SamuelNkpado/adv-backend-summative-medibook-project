@@ -1,6 +1,7 @@
 const express = require('express');
 const patientRoutes = require('./routes/patientRoutes');
 const doctorRoutes = require('./routes/doctorRoutes');
+const appointmentRoutes = require('./routes/appointmentRoutes');
 
 const app = express();
 
@@ -12,6 +13,7 @@ app.get('/health', (req, res) => {
 
 app.use('/api/patients', patientRoutes);
 app.use('/api/doctors', doctorRoutes);
+app.use('/api/appointments', appointmentRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
