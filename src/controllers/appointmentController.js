@@ -2,6 +2,7 @@ const appointmentModel = require('../models/appointmentModel');
 const { HttpError } = require('../errors');
 const { parseId } = require('../validation');
 const { parseSlot, validateSlotTime } = require('../bookingRules');
+const { logEvent } = require('../audit');
 
 const MAX_AMOUNT = 99999999.99;
 
@@ -33,6 +34,15 @@ async function createAppointment(req, res) {
     amountPaid,
   });
   const appointment = await appointmentModel.findById(appointmentId);
+
+  await logEvent('booking_created', {
+    appointment_id: appointment.appointment_id,
+    appt_ref: appointment.appt_ref,
+    patient_id: patientId,
+    doctor_id: doctorId,
+    amount_paid: amountPaid,
+  });
+
   res.status(201).json(appointment);
 }
 
@@ -49,6 +59,13 @@ async function cancelAppointment(req, res) {
   const id = parseId(req.params.id);
   const { refund } = await appointmentModel.cancelBooking(id);
   const appointment = await appointmentModel.findById(id);
+
+  await logEvent('booking_cancelled', {
+    appointment_id: id,
+    appt_ref: appointment.appt_ref,
+    refund_amount: refund,
+  });
+
   res.json({ ...appointment, refund_amount: refund });
 }
 
