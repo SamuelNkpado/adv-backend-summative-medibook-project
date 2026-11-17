@@ -36,6 +36,8 @@ CREATE TABLE appointments (
   status          ENUM('booked','cancelled') NOT NULL DEFAULT 'booked',
   amount_paid     DECIMAL(10,2) NOT NULL,
   booked_on       DATE          NOT NULL,
+  cancelled_at    DATETIME      NULL,
+  refund_amount   DECIMAL(10,2) NULL,
   active_slot     DATETIME
                   GENERATED ALWAYS AS (IF(status = 'booked', appt_datetime, NULL)) STORED,
   PRIMARY KEY (appointment_id),
@@ -44,6 +46,7 @@ CREATE TABLE appointments (
   CONSTRAINT fk_appt_patient FOREIGN KEY (patient_id) REFERENCES patients (patient_id),
   CONSTRAINT fk_appt_doctor  FOREIGN KEY (doctor_id)  REFERENCES doctors (doctor_id),
   CONSTRAINT chk_appt_amount CHECK (amount_paid >= 0),
+  CONSTRAINT chk_appt_refund CHECK (refund_amount IS NULL OR refund_amount <= amount_paid),
   CONSTRAINT chk_appt_slot CHECK (
     SECOND(appt_datetime) = 0
     AND MINUTE(appt_datetime) IN (0, 30)

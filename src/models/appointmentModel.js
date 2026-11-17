@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const { pool, query } = require('./db');
 const { HttpError } = require('../errors');
 const { assertBelowDailyCap } = require('../bookingRules');
+const { calculateRefund } = require('../refundPolicy');
 
 const SLOT_TAKEN_MESSAGE = 'Slot is already booked for this doctor';
 
@@ -22,7 +23,7 @@ function newApptRef() {
 async function findById(id) {
   const rows = await query(
     `SELECT appointment_id, appt_ref, patient_id, doctor_id, appt_datetime,
-            status, amount_paid, booked_on
+            status, amount_paid, booked_on, cancelled_at, refund_amount
        FROM appointments
       WHERE appointment_id = ?`,
     [id]
@@ -80,5 +81,46 @@ async function createBooking({ patientId, doctorId, slot, amountPaid, now = new 
     conn.release();
   }
 }
+async function cancelBooking(id, now = new Date()) {
+  const conn = await pool.getConnection();
+  try {
+    await conn.beginTransaction();
 
-module.exports = { findById, createBooking };
+    const [rows] = await conn.execute(
+      `SELECT appointment_id, appt_datetime, status, amount_paid
+         FROM appointments
+        WHERE appointment_id = ? FOR UPDATE`,
+      [id]
+    );
+    const appt = rows[0];
+    if (!appt) {
+      throw new HttpError(404, `Appointment ${id} not found`);
+    }
+    if (appt.status === 'cancelled') {
+      throw new HttpError(409, 'Appointment is already cancelled');
+    }
+
+    const refund = calculateRefund(
+      Number(appt.amount_paid),
+      new Date(appt.appt_datetime),
+      now
+    );
+
+    await conn.execute(
+      `UPDATE appointments
+          SET status = 'cancelled', cancelled_at = ?, refund_amount = ?
+        WHERE appointment_id = ?`,
+      [formatDateTime(now), refund, id]
+    );
+
+    await conn.commit();
+    return { refund };
+  } catch (err) {
+    await conn.rollback().catch(() => {});
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+module.exports = { findById, createBooking, cancelBooking };

@@ -45,4 +45,11 @@ async function getAppointment(req, res) {
   res.json(appointment);
 }
 
-module.exports = { createAppointment, getAppointment };
+async function cancelAppointment(req, res) {
+  const id = parseId(req.params.id);
+  const { refund } = await appointmentModel.cancelBooking(id);
+  const appointment = await appointmentModel.findById(id);
+  res.json({ ...appointment, refund_amount: refund });
+}
+
+module.exports = { createAppointment, getAppointment, cancelAppointment };
