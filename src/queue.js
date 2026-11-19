@@ -14,7 +14,7 @@ function connect() {
 
 const waitlistKey = (doctorId, day) => `waitlist:${doctorId}:${day}`;
 const processingKey = (doctorId, day) => `processing:${doctorId}:${day}`;
-const FREED_SLOTS_KEY = 'jobs:freed-slots';
+const JOBS_KEY = 'jobs';
 
 // Patients join the tail, so the head is the longest-waiting patient.
 async function joinWaitlist(doctorId, day, patientId) {
@@ -22,46 +22,46 @@ async function joinWaitlist(doctorId, day, patientId) {
   return client.rPush(waitlistKey(doctorId, day), String(patientId));
 }
 
-// Atomically move the head of the waitlist into the processing list.
-// The patient is never in neither list while the promotion is in progress.
-async function promoteNext(doctorId, day) {
+async function isOnWaitlist(doctorId, day, patientId) {
   await connect();
-  return client.lMove(
-    waitlistKey(doctorId, day),
-    processingKey(doctorId, day),
-    'LEFT',
-    'RIGHT'
-  );
+  const position = await client.lPos(waitlistKey(doctorId, day), String(patientId));
+  return position !== null && position !== undefined;
 }
 
-// The promoted booking succeeded: the patient is now in the appointments table,
-// so remove them from the processing list.
+// Atomically move the head of the waitlist into the processing list.
+// The patient is never in neither list while a promotion is in progress.
+async function promoteNext(doctorId, day) {
+  await connect();
+  return client.lMove(waitlistKey(doctorId, day), processingKey(doctorId, day), 'LEFT', 'RIGHT');
+}
+
+// The promoted booking is committed, so the patient leaves the processing list.
 async function confirmPromotion(doctorId, day, patientId) {
   await connect();
   return client.lRem(processingKey(doctorId, day), 1, String(patientId));
 }
 
-// The promoted booking failed: return the patient to the front of the waitlist.
+// The promoted booking failed: move the patient back to the head of the waitlist.
+// Both steps run in one transaction, so the patient is never in neither list.
 async function requeueFailedPromotion(doctorId, day, patientId) {
   await connect();
-  await client.lMove(
-    processingKey(doctorId, day),
-    waitlistKey(doctorId, day),
-    'RIGHT',
-    'LEFT'
-  );
+  const id = String(patientId);
+  await client
+    .multi()
+    .lRem(processingKey(doctorId, day), 1, id)
+    .lPush(waitlistKey(doctorId, day), id)
+    .exec();
 }
 
-// Called by the cancel endpoint: announce that a slot has been freed.
-async function enqueueFreedSlot(job) {
+async function enqueueJob(type, payload) {
   await connect();
-  return client.rPush(FREED_SLOTS_KEY, JSON.stringify(job));
+  return client.rPush(JOBS_KEY, JSON.stringify({ type, payload }));
 }
 
-// Called by the worker: wait up to 5 seconds for the next freed slot.
-async function takeNextFreedSlot(timeoutSeconds = 5) {
+// Waits up to timeoutSeconds for the next job, then returns it or null.
+async function takeNextJob(timeoutSeconds = 5) {
   await connect();
-  const item = await client.blPop(FREED_SLOTS_KEY, timeoutSeconds);
+  const item = await client.blPop(JOBS_KEY, timeoutSeconds);
   return item ? JSON.parse(item.element) : null;
 }
 
@@ -74,10 +74,11 @@ async function quit() {
 
 module.exports = {
   joinWaitlist,
+  isOnWaitlist,
   promoteNext,
   confirmPromotion,
   requeueFailedPromotion,
-  enqueueFreedSlot,
-  takeNextFreedSlot,
+  enqueueJob,
+  takeNextJob,
   quit,
 };

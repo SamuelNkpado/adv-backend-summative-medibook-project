@@ -3,6 +3,7 @@ const patientRoutes = require('./routes/patientRoutes');
 const doctorRoutes = require('./routes/doctorRoutes');
 const appointmentRoutes = require('./routes/appointmentRoutes');
 const reportRoutes = require('./routes/reportRoutes');
+const waitlistRoutes = require('./routes/waitlistRoutes');
 
 const app = express();
 
@@ -16,6 +17,7 @@ app.use('/api/patients', patientRoutes);
 app.use('/api/doctors', doctorRoutes);
 app.use('/api/appointments', appointmentRoutes);
 app.use('/api/reports', reportRoutes);
+app.use('/api/waitlist', waitlistRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ error: 'Route not found' });
@@ -28,6 +30,7 @@ app.use((err, req, res, next) => {
   console.error(err);
   res.status(err.status || 500).json({
     error: err.expose ? err.message : 'Internal server error',
+    ...(err.expose && err.extra ? err.extra : {}),
   });
 });
 

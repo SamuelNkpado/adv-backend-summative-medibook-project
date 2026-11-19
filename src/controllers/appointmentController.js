@@ -2,7 +2,9 @@ const appointmentModel = require('../models/appointmentModel');
 const { HttpError } = require('../errors');
 const { parseId } = require('../validation');
 const { parseSlot, validateSlotTime } = require('../bookingRules');
+const { formatDay, formatSlot } = require('../dates');
 const { logEvent } = require('../audit');
+const queue = require('../queue');
 
 const MAX_AMOUNT = 99999999.99;
 
@@ -20,6 +22,16 @@ function parseAmount(raw) {
   return Math.round(amount * 100) / 100;
 }
 
+// Queue and log writes happen after a database commit. A failure here is reported,
+// but it must never turn a successful booking or cancellation into an error.
+async function bestEffort(label, task) {
+  try {
+    await task();
+  } catch (err) {
+    console.error(`${label} failed:`, err.message);
+  }
+}
+
 async function createAppointment(req, res) {
   const body = req.body || {};
   const patientId = parseId(body.patient_id);
@@ -27,21 +39,47 @@ async function createAppointment(req, res) {
   const slot = validateSlotTime(parseSlot(body.appt_datetime));
   const amountPaid = parseAmount(body.amount_paid);
 
-  const appointmentId = await appointmentModel.createBooking({
-    patientId,
-    doctorId,
-    slot,
-    amountPaid,
-  });
+  let appointmentId;
+  try {
+    appointmentId = await appointmentModel.createBooking({
+      patientId,
+      doctorId,
+      slot,
+      amountPaid,
+    });
+  } catch (err) {
+    if (err.status === 409) {
+      throw new HttpError(409, err.message, {
+        waitlist: {
+          method: 'POST',
+          url: '/api/waitlist',
+          body: { patient_id: patientId, doctor_id: doctorId, day: formatDay(slot) },
+        },
+      });
+    }
+    throw err;
+  }
+
   const appointment = await appointmentModel.findById(appointmentId);
 
-  await logEvent('booking_created', {
-    appointment_id: appointment.appointment_id,
-    appt_ref: appointment.appt_ref,
-    patient_id: patientId,
-    doctor_id: doctorId,
-    amount_paid: amountPaid,
-  });
+  await bestEffort('Audit log', () =>
+    logEvent('booking_created', {
+      appointment_id: appointment.appointment_id,
+      appt_ref: appointment.appt_ref,
+      patient_id: patientId,
+      doctor_id: doctorId,
+      amount_paid: amountPaid,
+    })
+  );
+
+  await bestEffort('Confirmation job', () =>
+    queue.enqueueJob('confirmation', {
+      appointment_id: appointment.appointment_id,
+      appt_ref: appointment.appt_ref,
+      patient_id: patientId,
+      doctor_id: doctorId,
+    })
+  );
 
   res.status(201).json(appointment);
 }
@@ -60,11 +98,22 @@ async function cancelAppointment(req, res) {
   const { refund } = await appointmentModel.cancelBooking(id);
   const appointment = await appointmentModel.findById(id);
 
-  await logEvent('booking_cancelled', {
-    appointment_id: id,
-    appt_ref: appointment.appt_ref,
-    refund_amount: refund,
-  });
+  await bestEffort('Audit log', () =>
+    logEvent('booking_cancelled', {
+      appointment_id: id,
+      appt_ref: appointment.appt_ref,
+      refund_amount: refund,
+    })
+  );
+
+  await bestEffort('Freed-slot job', () =>
+    queue.enqueueJob('freed_slot', {
+      doctor_id: appointment.doctor_id,
+      day: formatDay(appointment.appt_datetime),
+      slot: formatSlot(appointment.appt_datetime),
+      freed_appointment_id: id,
+    })
+  );
 
   res.json({ ...appointment, refund_amount: refund });
 }
