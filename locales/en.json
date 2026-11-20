@@ -1,0 +1,20 @@
+{
+  "title": "Course Feedback",
+  "instructions": "Please answer each question in a few sentences. Your answers help us improve the course.",
+  "today": "Today's date",
+  "submit": "Submit feedback",
+  "questions": [
+    "Which topic in this course did you find most challenging, and why?",
+    "Describe one concept you understood only after the practical assignments. What made it click?",
+    "How has your approach to designing databases or APIs changed since the start of the trimester?",
+    "What would you improve about how this course was taught or assessed?",
+    "How do you plan to apply what you learned in this course going forward?"
+  ],
+  "answers": [
+    "- Database design and normalization were the hardest topic for me. Deciding which entities to create, which keys to use, and how to split patient, doctor, and appointment data without repeating it took careful thought.\n- Turning business rules into database constraints was the most difficult part. Rules such as 'a doctor cannot have two appointments at the same time' and 'a cancelled slot must become bookable again' needed a generated column and a unique index, which I did not expect.\n- Concurrency was the second challenge. Making sure two simultaneous requests could not book the same slot or exceed the 12-per-day cap needed a transaction and a row lock on the doctor, and I had to test it to be confident it worked.\n- The waitlist and worker were the hardest part overall. Keeping a patient from being lost between the queue and the appointments table, and returning a failed promotion to the front of the list, required careful thinking about failure cases.",
+    "- Before the practical work, I thought a database transaction alone made the daily cap safe.\n- My first version counted the day's bookings and then inserted, so two requests could both count 11 and both insert.\n- What made it click was the row lock. A SELECT ... FOR UPDATE on the doctor's row makes the second request wait until the first commits, so it counts 12 and is rejected.\n- Sending two identical requests at the same moment, and seeing one succeed while the other returned 409, made the idea concrete.",
+    "- At the start I copied the spreadsheet into tables and treated values such as email as natural keys.\n- Now I begin from the business rules and sort them: what the database can enforce with UNIQUE, CHECK, and generated columns, and what the application must enforce, such as future-only bookings.\n- I write the pure validation functions and their tests before the database code, so the rules are checked without MySQL running.\n- I keep every SQL statement in the models folder, never in a controller or route, which makes the code easier to review.",
+    "- Include a short worked example of transactions and row locking before the assignment. The concurrency rule carries the most marks, and it was the hardest to learn from the notes alone.\n- Make the README requirements consistent. The brief named a video walkthrough in one place and a viva in another, which took time to resolve.\n- Provide a starter outline for the Redis worker, since the queue design was open-ended and easy to get wrong.\n- Keep the marking criteria next to the matching task, so it is clear what each part must demonstrate.",
+    "- Reuse the same structure of routes, controllers, models, and pure rule functions on future backend projects.\n- Write tests for business rules alongside the code instead of leaving them to the end.\n- Apply the transaction-and-lock pattern to any system where two users can claim the same limited resource, such as bookings, tickets, or stock.\n- Document decisions in the README as I go, so the reason for each choice is ready for a viva."
+  ]
+}
