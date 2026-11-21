@@ -1,0 +1,426 @@
+{
+  "info": {
+    "_postman_id": "6f2d8c1e-medibook-collection-v1",
+    "name": "MediBook API",
+    "description": "Run in order with the Collection Runner. Before each run: reseed the database (Get-Content database\\seed.sql | mysql -u medibook -p), start the API (npm start), and start the worker (npm run worker). Requests that create data save their IDs into collection variables for later requests.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "patientId", "value": "" },
+    { "key": "doctorId", "value": "" },
+    { "key": "appointmentId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "Health",
+      "item": [
+        {
+          "name": "Health check",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+            "pm.test('service reports ok', function () { pm.expect(pm.response.json().status).to.eql('ok'); });"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/health" }
+        }
+      ]
+    },
+    {
+      "name": "Patients",
+      "item": [
+        {
+          "name": "List patients",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+            "pm.test('returns at least the seeded patients', function () { pm.expect(pm.response.json().length).to.be.at.least(3); });"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/patients" }
+        },
+        {
+          "name": "Create patient",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 201', function () { pm.response.to.have.status(201); });",
+            "const body = pm.response.json();",
+            "pm.collectionVariables.set('patientId', body.patient_id);",
+            "pm.test('saves the submitted email', function () { pm.expect(body.patient_email).to.eql('postman.test@mail.com'); });"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"name\":\"Postman Patient\",\"email\":\"postman.test@mail.com\",\"phone\":\"0700-000-111\"}" },
+            "url": "{{baseUrl}}/api/patients"
+          }
+        },
+        {
+          "name": "Get created patient",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+            "pm.test('returns the same patient', function () { pm.expect(pm.response.json().patient_id).to.eql(Number(pm.collectionVariables.get('patientId'))); });"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/patients/{{patientId}}" }
+        },
+        {
+          "name": "Update created patient",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+            "pm.test('name is updated', function () { pm.expect(pm.response.json().patient_name).to.eql('Postman Patient Updated'); });"
+          ] } }],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"name\":\"Postman Patient Updated\",\"email\":\"postman.test@mail.com\",\"phone\":\"0700-000-111\"}" },
+            "url": "{{baseUrl}}/api/patients/{{patientId}}"
+          }
+        },
+        {
+          "name": "Get patient with invalid ID",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 400', function () { pm.response.to.have.status(400); });",
+            "pm.test('explains the ID problem', function () { pm.expect(pm.response.json().error).to.include('positive integer'); });"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/patients/abc" }
+        },
+        {
+          "name": "Get missing patient",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 404', function () { pm.response.to.have.status(404); });"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/patients/999" }
+        },
+        {
+          "name": "Create patient with duplicate email",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 409', function () { pm.response.to.have.status(409); });"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"name\":\"Duplicate\",\"email\":\"ama@mail.com\",\"phone\":\"0700-111-222\"}" },
+            "url": "{{baseUrl}}/api/patients"
+          }
+        },
+        {
+          "name": "Create patient with invalid input",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 400', function () { pm.response.to.have.status(400); });",
+            "pm.test('lists each problem', function () { pm.expect(pm.response.json().error).to.include('email'); });"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"name\":\"\",\"email\":\"not-an-email\",\"phone\":\"x\"}" },
+            "url": "{{baseUrl}}/api/patients"
+          }
+        },
+        {
+          "name": "Delete created patient",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 204', function () { pm.response.to.have.status(204); });"
+          ] } }],
+          "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/api/patients/{{patientId}}" }
+        },
+        {
+          "name": "Delete patient with appointments (blocked)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 409', function () { pm.response.to.have.status(409); });",
+            "pm.test('explains the appointments block', function () { pm.expect(pm.response.json().error).to.include('appointments'); });"
+          ] } }],
+          "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/api/patients/1" }
+        }
+      ]
+    },
+    {
+      "name": "Doctors",
+      "item": [
+        {
+          "name": "List doctors",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+            "pm.test('returns at least the seeded doctors', function () { pm.expect(pm.response.json().length).to.be.at.least(3); });"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/doctors" }
+        },
+        {
+          "name": "Create doctor",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 201', function () { pm.response.to.have.status(201); });",
+            "const body = pm.response.json();",
+            "pm.collectionVariables.set('doctorId', body.doctor_id);",
+            "pm.test('fee is stored as a number', function () { pm.expect(Number(body.consultation_fee)).to.eql(80.5); });"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"name\":\"Dr. Postman\",\"specialty\":\"General\",\"fee\":\"80.5\",\"room\":\"R-99\"}" },
+            "url": "{{baseUrl}}/api/doctors"
+          }
+        },
+        {
+          "name": "Create doctor with negative fee",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 400', function () { pm.response.to.have.status(400); });",
+            "pm.test('explains the fee problem', function () { pm.expect(pm.response.json().error).to.include('fee cannot be negative'); });"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"name\":\"Bad\",\"specialty\":\"X\",\"fee\":-5,\"room\":\"R-1\"}" },
+            "url": "{{baseUrl}}/api/doctors"
+          }
+        },
+        {
+          "name": "Update created doctor",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+            "pm.test('specialty is updated', function () { pm.expect(pm.response.json().specialty).to.eql('Internal Medicine'); });"
+          ] } }],
+          "request": {
+            "method": "PUT",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"name\":\"Dr. Postman\",\"specialty\":\"Internal Medicine\",\"fee\":80.5,\"room\":\"R-99\"}" },
+            "url": "{{baseUrl}}/api/doctors/{{doctorId}}"
+          }
+        },
+        {
+          "name": "Get doctor statistics",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+            "const body = pm.response.json();",
+            "pm.test('includes revenue and upcoming count', function () { pm.expect(body).to.have.property('revenue'); pm.expect(body).to.have.property('upcoming_count'); });",
+            "pm.test('lists exactly 7 days', function () { pm.expect(body.next_7_days.length).to.eql(7); });"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/doctors/1/stats" }
+        },
+        {
+          "name": "Delete created doctor",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 204', function () { pm.response.to.have.status(204); });"
+          ] } }],
+          "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/api/doctors/{{doctorId}}" }
+        },
+        {
+          "name": "Delete doctor with appointments (blocked)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 409', function () { pm.response.to.have.status(409); });"
+          ] } }],
+          "request": { "method": "DELETE", "header": [], "url": "{{baseUrl}}/api/doctors/1" }
+        }
+      ]
+    },
+    {
+      "name": "Appointments",
+      "item": [
+        {
+          "name": "Book an appointment",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 201', function () { pm.response.to.have.status(201); });",
+            "const body = pm.response.json();",
+            "pm.collectionVariables.set('appointmentId', body.appointment_id);",
+            "pm.test('status is booked', function () { pm.expect(body.status).to.eql('booked'); });",
+            "pm.test('amount is saved', function () { pm.expect(Number(body.amount_paid)).to.eql(200); });"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"patient_id\":2,\"doctor_id\":3,\"appt_datetime\":\"2026-12-30T10:00\",\"amount_paid\":200}" },
+            "url": "{{baseUrl}}/api/appointments"
+          }
+        },
+        {
+          "name": "Get booked appointment",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 200', function () { pm.response.to.have.status(200); });"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/appointments/{{appointmentId}}" }
+        },
+        {
+          "name": "Book the same slot again (taken)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 409', function () { pm.response.to.have.status(409); });",
+            "pm.test('includes a waitlist hint', function () { pm.expect(pm.response.json().waitlist.url).to.eql('/api/waitlist'); });"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"patient_id\":1,\"doctor_id\":3,\"appt_datetime\":\"2026-12-30T10:00\",\"amount_paid\":200}" },
+            "url": "{{baseUrl}}/api/appointments"
+          }
+        },
+        {
+          "name": "Book a past time",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 422', function () { pm.response.to.have.status(422); });",
+            "pm.test('explains the rule', function () { pm.expect(pm.response.json().error).to.include('future'); });"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"patient_id\":1,\"doctor_id\":2,\"appt_datetime\":\"2026-11-10T10:00\",\"amount_paid\":100}" },
+            "url": "{{baseUrl}}/api/appointments"
+          }
+        },
+        {
+          "name": "Book at 17:00 (outside hours)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 422', function () { pm.response.to.have.status(422); });",
+            "pm.test('explains working hours', function () { pm.expect(pm.response.json().error).to.include('09:00 and 16:30'); });"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"patient_id\":1,\"doctor_id\":2,\"appt_datetime\":\"2026-12-30T17:00\",\"amount_paid\":100}" },
+            "url": "{{baseUrl}}/api/appointments"
+          }
+        },
+        {
+          "name": "Book with malformed date",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 400', function () { pm.response.to.have.status(400); });"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"patient_id\":1,\"doctor_id\":2,\"appt_datetime\":\"30/12/2026\",\"amount_paid\":100}" },
+            "url": "{{baseUrl}}/api/appointments"
+          }
+        },
+        {
+          "name": "Book with negative amount",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 400', function () { pm.response.to.have.status(400); });",
+            "pm.test('explains the amount problem', function () { pm.expect(pm.response.json().error).to.include('negative'); });"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"patient_id\":1,\"doctor_id\":2,\"appt_datetime\":\"2026-12-30T10:00\",\"amount_paid\":-5}" },
+            "url": "{{baseUrl}}/api/appointments"
+          }
+        },
+        {
+          "name": "Cancel appointment (full refund)",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+            "const body = pm.response.json();",
+            "pm.test('status is cancelled', function () { pm.expect(body.status).to.eql('cancelled'); });",
+            "pm.test('more than 48 hours notice gives a full refund', function () { pm.expect(Number(body.refund_amount)).to.eql(200); });",
+            "pm.test('cancellation time is recorded', function () { pm.expect(body.cancelled_at).to.not.be.null; });"
+          ] } }],
+          "request": { "method": "POST", "header": [], "url": "{{baseUrl}}/api/appointments/{{appointmentId}}/cancel" }
+        },
+        {
+          "name": "Cancel the same appointment again",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 409', function () { pm.response.to.have.status(409); });",
+            "pm.test('explains it is already cancelled', function () { pm.expect(pm.response.json().error).to.include('already cancelled'); });"
+          ] } }],
+          "request": { "method": "POST", "header": [], "url": "{{baseUrl}}/api/appointments/{{appointmentId}}/cancel" }
+        },
+        {
+          "name": "Rebook the freed slot",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 201', function () { pm.response.to.have.status(201); });"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"patient_id\":1,\"doctor_id\":3,\"appt_datetime\":\"2026-12-30T10:00\",\"amount_paid\":200}" },
+            "url": "{{baseUrl}}/api/appointments"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Reports",
+      "item": [
+        {
+          "name": "Doctors report",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+            "pm.test('every doctor has a revenue figure', function () { pm.response.json().forEach(function (d) { pm.expect(d).to.have.property('revenue'); }); });"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/reports/doctors" }
+        },
+        {
+          "name": "Busy days report",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+            "pm.test('only days above 80% capacity appear', function () { pm.response.json().forEach(function (d) { pm.expect(d.booked).to.be.at.least(10); }); });"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/api/reports/busy-days" }
+        }
+      ]
+    },
+    {
+      "name": "Waitlist",
+      "item": [
+        {
+          "name": "Join waitlist",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 201', function () { pm.response.to.have.status(201); });",
+            "pm.test('position is returned', function () { pm.expect(pm.response.json().position).to.be.at.least(1); });"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"patient_id\":2,\"doctor_id\":3,\"day\":\"2026-12-30\"}" },
+            "url": "{{baseUrl}}/api/waitlist"
+          }
+        },
+        {
+          "name": "Join waitlist again",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 409', function () { pm.response.to.have.status(409); });"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"patient_id\":2,\"doctor_id\":3,\"day\":\"2026-12-30\"}" },
+            "url": "{{baseUrl}}/api/waitlist"
+          }
+        },
+        {
+          "name": "Join waitlist for a past day",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 422', function () { pm.response.to.have.status(422); });"
+          ] } }],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": { "mode": "raw", "raw": "{\"patient_id\":2,\"doctor_id\":3,\"day\":\"2026-11-01\"}" },
+            "url": "{{baseUrl}}/api/waitlist"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Feedback page",
+      "item": [
+        {
+          "name": "Feedback in English",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+            "pm.test('page is in English', function () { pm.expect(pm.response.text()).to.include('Course Feedback'); });"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/feedback?lang=en" }
+        },
+        {
+          "name": "Feedback in French",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+            "pm.test('page is in French', function () { pm.expect(pm.response.text()).to.include('Retour sur le cours'); });"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/feedback?lang=fr" }
+        },
+        {
+          "name": "Feedback with unsupported language falls back to English",
+          "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+            "pm.test('status is 200', function () { pm.response.to.have.status(200); });",
+            "pm.test('falls back to English', function () { pm.expect(pm.response.text()).to.include('Course Feedback'); });"
+          ] } }],
+          "request": { "method": "GET", "header": [], "url": "{{baseUrl}}/feedback?lang=de" }
+        }
+      ]
+    }
+  ]
+}
