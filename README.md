@@ -128,3 +128,264 @@ Create a **simple HTML page** (served by your Express app at `GET /feedback`) co
 - A short **viva/demo (10 minutes)** walkthrough.
 
 **Automatic penalties:** SQL injection vector anywhere in the app (−15), secrets committed to the repo (−5), app does not start per README instructions (−10), work the student cannot explain in the video (or at a follow-up viva if called) | Academic integrity referral; affected criteria re-scored at Developing or below |
+
+
+# MediBook Clinic Appointment API
+
+A backend for booking doctor appointments at a community clinic. It is built with Express.js, MySQL 8, and Redis, and it uses parameterized queries only, with no ORM.
+
+## Contents
+
+1. Requirements
+2. Setup
+3. Running the app
+4. Running the tests
+5. API reference
+6. Postman collection
+7. Feedback page
+8. Design justifications (Parts C, D, E)
+9. Known limitations
+
+## 1. Requirements
+
+| Tool | Version used | Notes |
+|---|---|---|
+| Node.js | 22 | 18 or later should work |
+| MySQL | 8.0 | Generated columns and CHECK constraints need 8.0.16 or later |
+| Redis | 7 | On Windows, run Redis inside WSL 2 (Ubuntu) |
+
+## 2. Setup
+
+### 2.1 Start Redis
+
+On Windows, open Ubuntu in WSL and run:
+
+```
+sudo apt update && sudo apt install -y redis-server
+sudo service redis-server start
+redis-cli ping
+```
+
+The last command should print `PONG`.
+
+### 2.2 Create the MySQL user
+
+Log in to MySQL as an administrator and run:
+
+```sql
+CREATE USER 'medibook'@'localhost' IDENTIFIED BY 'choose_a_password';
+GRANT ALL PRIVILEGES ON medibook.* TO 'medibook'@'localhost';
+FLUSH PRIVILEGES;
+```
+
+### 2.3 Load the schema and sample data
+
+From the project root:
+
+```
+mysql -u medibook -p < database/schema.sql
+mysql -u medibook -p < database/seed.sql
+```
+
+In Windows PowerShell, use this form instead:
+
+```
+Get-Content database\schema.sql | mysql -u medibook -p
+Get-Content database\seed.sql | mysql -u medibook -p
+```
+
+`schema.sql` creates the `medibook` database and its three tables. It drops and recreates them, so it can be run again. `seed.sql` replaces the data with sample patients, doctors, and appointments.
+
+### 2.4 Configure the environment
+
+Copy `.env.example` to `.env` and set your MySQL password:
+
+```
+DB_HOST=localhost
+DB_PORT=3306
+DB_USER=medibook
+DB_PASSWORD=choose_a_password
+DB_NAME=medibook
+REDIS_URL=redis://127.0.0.1:6379
+PORT=3000
+```
+
+`.env` is listed in `.gitignore`, so the password is never committed.
+
+### 2.5 Install dependencies
+
+```
+npm install
+```
+
+## 3. Running the app
+
+The app needs two processes: the API and the waitlist worker. Open two terminals in the project root.
+
+Terminal 1, the API:
+
+```
+npm start
+```
+
+Terminal 2, the worker:
+
+```
+npm run worker
+```
+
+The API listens on `http://localhost:3000`. The worker waits for jobs from Redis and writes its results to `logs/audit.log`.
+
+Check that the API is running:
+
+```
+curl http://localhost:3000/health
+```
+
+Expected output: `{"status":"ok"}`.
+
+## 4. Running the tests
+
+```
+npm test
+```
+
+The tests are pure unit tests. They do not need MySQL or Redis to be running. There are 39 tests in four files: booking rules, refund policy, date handling, and the feedback locale logic.
+
+## 5. API reference
+
+All request bodies are JSON, except the feedback form, which is HTML form data. Error responses have the form `{ "error": "message" }`.
+
+### Patients
+
+| Method | Path | Success | Other responses |
+|---|---|---|---|
+| GET | `/api/patients` | 200 | |
+| GET | `/api/patients/:id` | 200 | 400 bad ID, 404 not found |
+| POST | `/api/patients` | 201 | 400 invalid input, 409 duplicate email |
+| PUT | `/api/patients/:id` | 200 | 400, 404, 409 |
+| DELETE | `/api/patients/:id` | 204 | 400, 404, 409 has appointments |
+
+Body for POST and PUT: `name`, `email`, `phone`.
+
+### Doctors
+
+| Method | Path | Success | Other responses |
+|---|---|---|---|
+| GET | `/api/doctors` | 200 | |
+| GET | `/api/doctors/:id` | 200 | 400, 404 |
+| POST | `/api/doctors` | 201 | 400 invalid input |
+| PUT | `/api/doctors/:id` | 200 | 400, 404 |
+| DELETE | `/api/doctors/:id` | 204 | 400, 404, 409 has appointments |
+| GET | `/api/doctors/:id/stats` | 200 | 400, 404 |
+
+Body for POST and PUT: `name`, `specialty`, `fee`, `room`. The fee may be sent as a number or as text, such as `"150.00"`.
+
+### Appointments
+
+| Method | Path | Success | Other responses |
+|---|---|---|---|
+| POST | `/api/appointments` | 201 | 400 bad input, 404 patient or doctor missing, 409 slot taken or day full (includes a `waitlist` hint), 422 past time or outside 09:00–16:30 |
+| GET | `/api/appointments/:id` | 200 | 400, 404 |
+| POST | `/api/appointments/:id/cancel` | 200 (returns `refund_amount`) | 400, 404, 409 already cancelled |
+
+Body for POST: `patient_id`, `doctor_id`, `appt_datetime` (for example `2026-12-01T10:00`), `amount_paid`.
+
+Cancelling is a POST to `/cancel`, not a DELETE. The record is kept for refund history.
+
+### Reports
+
+| Method | Path | Success |
+|---|---|---|
+| GET | `/api/reports/doctors` | 200 |
+| GET | `/api/reports/busy-days` | 200 |
+
+### Waitlist
+
+| Method | Path | Success | Other responses |
+|---|---|---|---|
+| POST | `/api/waitlist` | 201 | 400 bad input, 404 patient or doctor missing, 409 already waiting, 422 past day |
+
+Body: `patient_id`, `doctor_id`, `day` (for example `2026-12-01`).
+
+### Health
+
+| Method | Path | Success |
+|---|---|---|
+| GET | `/health` | 200 |
+
+## 6. Postman collection
+
+The file `postman/MediBook.postman_collection.json` contains 36 requests in seven folders. Each request checks its status code and the fields that matter, and requests that create data save their IDs for later requests.
+
+To run it:
+
+1. Import the file into Postman.
+2. Reseed the database, using the commands in section 2.3.
+3. Start the API and the worker.
+4. Choose **Run collection**.
+
+The full run passes 66 checks. Reseed before every run. The booking step creates an appointment on 2026-12-30 at 10:00, so a second run without reseeding will get a 409 at that step.
+
+## 7. Feedback page
+
+`GET /feedback` shows a course-feedback form with five questions. Every visible string comes from the locale files in `locales/`.
+
+| URL | Result |
+|---|---|
+| `/feedback` | English (the default) |
+| `/feedback?lang=en` | English |
+| `/feedback?lang=fr` | French |
+| `/feedback?lang=de` or any other value | English, without an error |
+
+The date is formatted for the active language with `Intl.DateTimeFormat`. Submitting the form posts the answers back to the same page, where they are shown again. The answers are not stored.
+
+## 8. Design justifications
+
+### Part C: booking and cancellation
+
+**The database holds the slot rule.** The `appointments` table has a generated column, `active_slot`, which equals `appt_datetime` while a booking is active and NULL once it is cancelled. A unique key on `(doctor_id, active_slot)` therefore stops two active bookings for one doctor at one time. MySQL ignores NULLs in unique keys, so a cancelled slot can be booked again while its record stays for refund history.
+
+**Concurrent requests are serialized by a row lock.** Each booking runs in a transaction. The first step locks the doctor's row with `SELECT ... FOR UPDATE`, so a second request for the same doctor waits until the first commits or rolls back. The daily count of active bookings is taken under that lock, so two requests cannot both see 11 bookings and both insert. The unique key is a backstop: if it still rejects an insert, the response is 409.
+
+**The 12-per-day cap is enforced in code.** A CHECK constraint cannot count rows, so the cap is checked inside the booking transaction, against the locked count.
+
+**Working hours are enforced in two places.** The schema has a CHECK that the start time falls on a 30-minute boundary between 09:00 and 16:30. The application also checks that the appointment is in the future, because MySQL CHECK constraints cannot use `NOW()`. The last valid start is 16:30, because a slot starting at 17:00 would run past closing.
+
+**Error codes:**
+- 400 for malformed input, such as an unreadable date or a negative amount.
+- 422 for valid input that breaks a business rule, such as a past time or a start outside working hours.
+- 409 for a conflict with existing data, such as a taken slot, a full day, or a cancellation that has already happened.
+
+**Refunds are computed on the server.** The refund percentage comes from the notice given, measured from the moment of cancellation. More than 48 hours gives 100%. Exactly 48 hours, or from 24 up to 48 hours, gives 50%. Less than 24 hours gives 0%. The calculation uses the stored `amount_paid`, never a value from the request. The boundaries are tested in `tests/refundPolicy.test.js`.
+
+**Cancellation and refund succeed or fail together.** The cancelled status, the cancellation time, and the refund amount are written in one transaction, which locks the appointment row first.
+
+**Revenue and statistics.** Revenue is total payments minus total refunds, counting every appointment. Cancelled bookings therefore contribute their payment and their refund, which nets to zero. The busy-day threshold is more than 80% of capacity, which means ten or more bookings out of twelve. Upcoming appointments are counted relative to the moment the request is made. The seven-day window starts today.
+
+### Part D: audit log
+
+Each successful booking, cancellation, and promotion is appended to `logs/audit.log` as one JSON line. The logger uses `fs.promises`, so no request handler blocks on disk. The directory is created with `recursive: true` on the first write and reused after that.
+
+Logging happens after the database commit. A booking that fails is never logged as successful. A logging failure is caught and written to the console, and the request still succeeds.
+
+### Part E: waitlist and worker
+
+**Waitlists are per doctor and per day.** A full slot or a full day both mean the patient is waiting for any opening with that doctor on that day. A per-day list lets a freed slot reach a patient who asked for a different time. The trade-off is that a promoted patient gets the first freed slot that day, not necessarily the time they asked for.
+
+**Cancelling a booking notifies the worker.** The cancel endpoint places a `freed_slot` job on a Redis list. The worker is a separate process, started with `npm run worker`.
+
+**Promotion never loses a patient.** The worker moves the first patient from the waitlist to a processing list in one atomic step, `LMOVE`. It then books the patient:
+- If the booking commits, the patient is removed from the processing list and a `waitlist_promoted` line is written to the audit log.
+- If the booking fails, both list changes run in one MULTI transaction, which removes the patient from processing and puts them back at the front of the waitlist. A `waitlist_promotion_failed` line is written to the audit log.
+
+**Promoted patients pay the consultation fee.** A patient on the waitlist has not paid, so the worker records the doctor's consultation fee as `amount_paid`.
+
+**Confirmation jobs.** Each successful booking places a `confirmation` job on the queue. The worker records it in the audit log as `booking_confirmed`. No real SMS or email is sent.
+
+## 9. Known limitations
+
+- **A patient whose promotion always fails stays at the head of the list.** For example, a waitlisted patient who is later deleted cannot be booked. Each freed slot that day retries and fails on that patient first, which blocks the others behind them. The fix is a dead-letter list after a set number of attempts. This was out of scope for the assignment.
+- **Jobs are not retried if the worker crashes mid-job.** The worker removes a job from the queue before processing it, so a crash during processing loses that job. A production system would use a reliable queue, such as BullMQ with acknowledgements.
+- **Times are stored as local clock time.** MySQL stores appointment times as entered. The JSON output converts them to UTC, which can make a time look two hours off in Postman. The stored value is correct.
+- **Feedback answers are not stored.** The brief asks for the page and the localization, not for storing responses, and the three-table limit leaves no place to keep them.
