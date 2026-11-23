@@ -4,17 +4,11 @@ const doctorModel = require('./models/doctorModel');
 const { pool } = require('./models/db');
 const { parseSlot, validateSlotTime } = require('./bookingRules');
 const { logEvent } = require('./audit');
+const { bestEffort } = require('./bestEffort');
 
 let running = true;
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function bestEffort(label, task) {
-  try {
-    await task();
-  } catch (err) {
-    console.error(`${label} failed:`, err.message);
-  }
-}
 
 async function promoteFromWaitlist({ doctor_id: doctorId, day, slot }) {
   const waiting = await queue.promoteNext(doctorId, day);
