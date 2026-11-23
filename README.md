@@ -387,5 +387,7 @@ Logging happens after the database commit. A booking that fails is never logged 
 
 - **A patient whose promotion always fails stays at the head of the list.** For example, a waitlisted patient who is later deleted cannot be booked. Each freed slot that day retries and fails on that patient first, which blocks the others behind them. The fix is a dead-letter list after a set number of attempts. This was out of scope for the assignment.
 - **Jobs are not retried if the worker crashes mid-job.** The worker removes a job from the queue before processing it, so a crash during processing loses that job. A production system would use a reliable queue, such as BullMQ with acknowledgements.
-- **Times are stored as local clock time.** MySQL stores appointment times as entered. The JSON output converts them to UTC, which can make a time look two hours off in Postman. The stored value is correct.
-- **Feedback answers are not stored.** The brief asks for the page and the localization, not for storing responses, and the three-table limit leaves no place to keep them.
+- **Times are stored as local clock time.** MySQL stores appointment times exactly as entered. The JSON output is in UTC, so a time can look shifted by the machine's timezone offset in Postman (one hour on the development machine). The stored value is correct.
+- **Feedback answers are not stored.** The page shows a set of prepared answers in each language, loaded from `locales/en.json` and `locales/fr.json`. Submitting the form sends the answers back to the server, which re-renders the page with the text the user submitted. 
+
+If Redis is not running after a Windows restart, run `sudo service redis-server start` again before starting the worker.
