@@ -1,13 +1,16 @@
 const { pool, query } = require('./db');
 
-const COLUMNS = 'doctor_id, doctor_name, specialty, consultation_fee, room';
-
 async function findAll() {
-  return query(`SELECT ${COLUMNS} FROM doctors ORDER BY doctor_id`);
+  return query(
+    'SELECT doctor_id, doctor_name, specialty, consultation_fee, room FROM doctors ORDER BY doctor_id'
+  );
 }
 
 async function findById(id) {
-  const rows = await query(`SELECT ${COLUMNS} FROM doctors WHERE doctor_id = ?`, [id]);
+  const rows = await query(
+    'SELECT doctor_id, doctor_name, specialty, consultation_fee, room FROM doctors WHERE doctor_id = ?',
+    [id]
+  );
   return rows[0] || null;
 }
 

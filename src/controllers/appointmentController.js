@@ -5,6 +5,7 @@ const { parseSlot, validateSlotTime } = require('../bookingRules');
 const { formatDay, formatSlot } = require('../dates');
 const { logEvent } = require('../audit');
 const queue = require('../queue');
+const { bestEffort } = require('../bestEffort');
 
 const MAX_AMOUNT = 99999999.99;
 
@@ -20,16 +21,6 @@ function parseAmount(raw) {
     throw new HttpError(400, 'amount_paid is too large');
   }
   return Math.round(amount * 100) / 100;
-}
-
-// Queue and log writes happen after a database commit. A failure here is reported,
-// but it must never turn a successful booking or cancellation into an error.
-async function bestEffort(label, task) {
-  try {
-    await task();
-  } catch (err) {
-    console.error(`${label} failed:`, err.message);
-  }
 }
 
 async function createAppointment(req, res) {
