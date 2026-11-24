@@ -126,6 +126,8 @@ Create a **simple HTML page** (served by your Express app at `GET /feedback`) co
   - `README.md` with: setup steps, `.env.example`, and the short written justifications requested in Parts C, D, and E
 - The app must start with `npm install && npm start` (plus documented MySQL/Redis setup) and tests with `npm test`.
 - A short **viva/demo (10 minutes)** walkthrough.
+https://www.awesomescreenshot.com/video/58621141?key=4b6fb182ac7c3cd9581a9bb8e65504d3
+
 
 **Automatic penalties:** SQL injection vector anywhere in the app (−15), secrets committed to the repo (−5), app does not start per README instructions (−10), work the student cannot explain in the video (or at a follow-up viva if called) | Academic integrity referral; affected criteria re-scored at Developing or below |
 
@@ -391,3 +393,8 @@ Logging happens after the database commit. A booking that fails is never logged 
 - **Feedback answers are not stored.** The page shows a set of prepared answers in each language, loaded from `locales/en.json` and `locales/fr.json`. Submitting the form sends the answers back to the server, which re-renders the page with the text the user submitted. 
 
 If Redis is not running after a Windows restart, run `sudo service redis-server start` again before starting the worker.
+
+## 10. Video Demo walkthrough
+
+- A short **viva/demo (10 minutes)** walkthrough.
+https://www.awesomescreenshot.com/video/58621141?key=4b6fb182ac7c3cd9581a9bb8e65504d3
